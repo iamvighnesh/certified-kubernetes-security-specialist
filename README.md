@@ -1,1 +1,1 @@
-# certified-kubernetes-security-specialist
+# Certified Kubernetes Security Specialist (CKS) Exam Prep
