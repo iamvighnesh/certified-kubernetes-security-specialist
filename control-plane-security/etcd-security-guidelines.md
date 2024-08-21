@@ -2,6 +2,45 @@
 
 ## Installing etcd
 
+> For certificate authority (CA) management, refer to the [Managing Custom Certificate Authority (CA)](../control-plane-security/custom-certificate-authority.md) section.
+
+### Generate Server Certificates and Key
+
+```bash
+# Switch to certificates directory
+cd /root/certificates
+
+# Generate a private key for the server
+openssl genrsa -out etcd-server.key 2048
+
+# Generate a certificate signing request (CSR) for the server
+openssl req -new -key etcd-server.key -out etcd-server.csr -subj "/CN=etcd-server"
+
+# Sign the server certificate with the CA
+openssl x509 -req -in etcd-server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out etcd-server.crt -days 365
+
+# Verify the server certificate
+openssl x509 -in etcd-server.crt -text -noout
+```
+
+### Generate Client Certificates and Key
+
+```bash
+# Generate a private key for the client
+openssl genrsa -out etcd-client.key 2048
+
+# Generate a certificate signing request (CSR) for the client
+openssl req -new -key etcd-client.key -out etcd-client.csr -subj "/CN=etcd-client"
+
+# Sign the client certificate with the CA
+openssl x509 -req -in etcd-client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out etcd-client.crt -days 365
+
+# Verify the client certificate
+openssl x509 -in etcd-client.crt -text -noout
+```
+
+### Install ectd as a Systemd Service
+
 ```bash
 # Download and install wget to download etcd
 apt-get update && apt-get install -y wget
@@ -11,8 +50,57 @@ wget https://github.com/etcd-io/etcd/releases/download/v3.5.4/etcd-v3.5.4-linux-
 tar xzvf etcd-v3.5.4-linux-amd64.tar.gz
 mv etcd-v3.5.4-linux-amd64/etcd* /usr/local/bin/
 
-# Verify the installation
-etcd --version
+# Start etcd as a systemd service with client cert and key
+cat <<EOF | sudo tee /etc/systemd/system/etcd.service
+[Unit]
+Description=etcd
+Documentation=
+After=network.target
+
+[Service]
+User=root
+Type=notify
+Environment=ETCD_NAME=etcd-node-1
+Environment=ETCD_DATA_DIR=/var/lib/etcd
+Environment=ETCD_LISTEN_PEER_URLS=https://
+Environment=ETCD_LISTEN_CLIENT_URLS=https://
+Environment=ETCD_INITIAL_ADVERTISE_PEER_URLS=https://
+Environment=ETCD_INITIAL_CLUSTER=etcd-node-1=https://
+Environment=ETCD_INITIAL_CLUSTER_STATE=new
+Environment=ETCD_INITIAL_CLUSTER_TOKEN
+Environment=ETCD_ADVERTISE_CLIENT_URLS=https://
+Environment=ETCD_CERT_FILE=/etc/etcd/etcd-server.crt
+Environment=ETCD_KEY_FILE=/etc/etcd/etcd-server.key
+Environment=ETCD_TRUSTED_CA_FILE=/etc/etcd/ca.crt
+Environment=ETCD_PEER_CERT_FILE=/etc/etcd/etcd-peer.crt
+Environment=ETCD_PEER_KEY_FILE=/etc/etcd/etcd-peer.key
+Environment=ETCD_PEER_TRUSTED_CA_FILE=/etc/etcd/ca.crt
+ExecStart=/usr/local/bin/etcd
+Restart=always
+RestartSec=10s
+LimitNOFILE=40000
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd and start etcd
+systemctl daemon-reload
+systemctl start etcd
+systemctl enable etcd
+
+# Verify etcd is running
+etcdctl version
+
+# Verify etcd is running
+etcdctl endpoint health
+
+# Verify etcd is running
+etcdctl member list
+
+# Verify etcd is running
+etcdctl put foo bar
+etcdctl get foo
 ```
 
 ## Key Security Areas
